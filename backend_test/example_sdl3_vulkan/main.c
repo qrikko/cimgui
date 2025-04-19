@@ -2,8 +2,8 @@
 #include <stdlib.h>         // abort
 #include <assert.h>
 #define SDL_MAIN_HANDLED
-#include <SDL.h>
-#include <SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 // Volk headers
 #ifdef IMGUI_IMPL_VULKAN_USE_VOLK
@@ -15,8 +15,8 @@
 #define IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE   (1)     // Minimum per atlas
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
-#include "cimgui.h"
-#include "cimgui_impl.h"
+#include <cimgui.h>
+#include <cimgui_impl.h>
 
 #ifdef IMGUI_HAS_IMSTR
 #define igBegin igBegin_Str
@@ -187,7 +187,7 @@ static void SetupVulkan(const char** extensions, uint32_t extensions_count)
         if (IsExtensionAvailable(properties, properties_count, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME)){
             //device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
             device_extensions_count++;
-            device_extensions = realloc(device_extensions, device_extensions_count * sizeof(const char*)); 
+            device_extensions = realloc(device_extensions, device_extensions_count * sizeof(const char*));
             assert(device_extensions);
             device_extensions[device_extensions_count-1] = VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME;
         }
@@ -380,9 +380,9 @@ int main(int argc, char* argv[])
 	//ImGui_ImplVulkanH_Window_Construct(&g_MainWindowData);
 	g_MainWindowData = *ImGui_ImplVulkanH_Window_ImGui_ImplVulkanH_Window();
     // Setup SDL
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
     {
-        printf("Error: %s\n", SDL_GetError());
+        printf("Error: SDL_Init(): %s\n", SDL_GetError());
         return -1;
     }
 
@@ -392,8 +392,8 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window with Vulkan graphics context
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+Vulkan example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL3+Vulkan example", 1280, 720, window_flags);
     if (window == NULL)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
@@ -401,16 +401,26 @@ int main(int argc, char* argv[])
     }
   // Setup Vulkan
   uint32_t extensions_count = 0;
-  SDL_Vulkan_GetInstanceExtensions(window, &extensions_count, NULL);
+  const char *const *extensions_nude = SDL_Vulkan_GetInstanceExtensions(&extensions_count);
+  if (extensions_nude == NULL) {
+    printf("Error: SDL_Vulkan_GetInstanceExtensions(): %s\n", SDL_GetError());
+    return -1;
+  }
   const char** extensions = (const char**)malloc(extensions_count * sizeof(const char*));
-  SDL_Vulkan_GetInstanceExtensions(window, &extensions_count, extensions);
+  if (extensions == NULL) {
+    printf("Error allocating space for extensions array\n");
+    return -1;
+  }
+  for (int i = 0; i < extensions_count; i++) {
+    extensions[i] = extensions_nude[i];
+  }
   SetupVulkan(extensions, extensions_count);
   //leak?? but free crashes
   // free(extensions);
     // Create Window Surface
     VkSurfaceKHR surface;
     VkResult err;
-    if (SDL_Vulkan_CreateSurface(window, g_Instance, &surface) == 0)
+    if (SDL_Vulkan_CreateSurface(window, g_Instance, g_Allocator, &surface) == 0)
     {
         printf("Failed to create Vulkan surface.\n");
         return 1;
@@ -421,6 +431,8 @@ int main(int argc, char* argv[])
     SDL_GetWindowSize(window, &w, &h);
     ImGui_ImplVulkanH_Window* wd = &g_MainWindowData;
     SetupVulkanWindow(wd, surface, w, h);
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    SDL_ShowWindow(window);
 
     // Setup Dear ImGui context
     //IMGUI_CHECKVERSION();
@@ -446,7 +458,7 @@ int main(int argc, char* argv[])
     }
 
     // Setup Platform/Renderer backends
-    ImGui_ImplSDL2_InitForVulkan(window);
+    ImGui_ImplSDL3_InitForVulkan(window);
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = g_Instance;
     init_info.PhysicalDevice = g_PhysicalDevice;
@@ -501,10 +513,10 @@ int main(int argc, char* argv[])
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
+            ImGui_ImplSDL3_ProcessEvent(&event);
+            if (event.type == SDL_EVENT_QUIT)
                 done = true;
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
+            if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window))
                 done = true;
         }
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
@@ -526,7 +538,7 @@ int main(int argc, char* argv[])
 
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
         igNewFrame();
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
@@ -542,10 +554,10 @@ int main(int argc, char* argv[])
             igText("This is some useful text");
             igCheckbox("Demo window", &show_demo_window);
             igCheckbox("Another window", &show_another_window);
-        
+
             igSliderFloat("Float", &f, 0.0f, 1.0f, "%.3f", 0);
             igColorEdit3("clear color", (float*)&clear_color, 0);
-        
+
             ImVec2 buttonSize;
             buttonSize.x = 0;
             buttonSize.y = 0;
@@ -553,7 +565,7 @@ int main(int argc, char* argv[])
               counter++;
             igSameLine(0.0f, -1.0f);
             igText("counter = %d", counter);
-        
+
             igText("Application average %.3f ms/frame (%.1f FPS)",
                    1000.0f / igGetIO()->Framerate, igGetIO()->Framerate);
             igEnd();
@@ -600,7 +612,7 @@ int main(int argc, char* argv[])
     err = vkDeviceWaitIdle(g_Device);
     check_vk_result_line(err, __LINE__);
     ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     igDestroyContext(NULL);
 
     CleanupVulkanWindow();
